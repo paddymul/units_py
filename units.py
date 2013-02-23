@@ -1,16 +1,11 @@
-
-
+import unittest
 
 class InvalidType(Exception):
     pass
 
-
-
 DimensionRelationTable = {
     "Length*Length":"Area",
     "Length/Time": "Speed"}
-
-
 
 class Dimension(object):
     def __mul__(self, multiplicant):
@@ -27,6 +22,20 @@ class Dimension(object):
             raise InvalidType(
                 "No way to multiply %s and %s" % (sl_cl, mp_cl))
 
+    def __div__(self, denominator):
+        dn_cl = dividen.__class__
+        sl_cl = self.__class__
+        if dn_cl in [float, int]:
+            return sl_cl(self.quantity / denominator)
+
+        type_def = "%s/%s" % (sl_cl.__name__, dn_cl.__name__)
+        if DimensionRelationTable.has_key(type_def):
+            r_type = TypeTable[DimensionRelationTable[type_def]]
+            return r_type(self.quantity / denominator.quantity)
+        else:
+            raise InvalidType(
+                "No way to divide %s by %s" % (sl_cl, dn_cl))
+
     def __init__(self, quantity):
         self.quantity = quantity
 
@@ -37,7 +46,16 @@ class Dimension(object):
             return sl_cl(self.quantity + addend.quantity)
         else:
             raise InvalidType(
-                "No way to add %s to %s" % (sl_cl, addend.__class__))
+                "No way to add %s to %s" % (sl_cl, ad_cl))
+
+    def __sub__(self, subtend):
+        sb_cl = subtend.__class__
+        sl_cl = self.__class__
+        if sb_cl == sl_cl:
+            return sl_cl(self.quantity - subtend.quantity)
+        else:
+            raise InvalidType(
+                "No way to subtract %s from %s" % (sb_cl, sl_cl))
 
     def __eq__(self, other_side):
         if not other_side.__class__ == self.__class__:
@@ -46,9 +64,9 @@ class Dimension(object):
             return True
         return False
 
-
     def __repr__(self):
         return "%s %d" % (self.__class__, self.quantity)
+
 
 def fill_relational_table(table):
     new_relations = []
@@ -68,6 +86,7 @@ def fill_relational_table(table):
             new_relations.append(
                 ["%s*%s" % (resultant_type, right_type), left_type])
     for expression, result_type in new_relations:
+
         table[expression] = result_type
     return table
 
@@ -92,8 +111,8 @@ TypeTable = {
 
 
 
-import unittest
-class TestUnits(unittest.TestCase):
+
+class TestDimensions(unittest.TestCase):
 
     def test_fill(self):
         mult_table = {"Length*Length":"Area"}
