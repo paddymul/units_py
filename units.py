@@ -8,6 +8,11 @@ DimensionRelationTable = {
     "Length/Time": "Speed"}
 
 class Dimension(object):
+
+    def __init__(self, quantity, unit_class=None):
+        self.quantity = quantity
+        self.unit_class = unit_class
+
     def __mul__(self, multiplicant):
         mp_cl = multiplicant.__class__
         sl_cl = self.__class__
@@ -36,8 +41,6 @@ class Dimension(object):
             raise InvalidType(
                 "No way to divide %s by %s" % (sl_cl, dn_cl))
 
-    def __init__(self, quantity):
-        self.quantity = quantity
 
     def __add__(self, addend):
         ad_cl = addend.__class__
@@ -109,6 +112,249 @@ TypeTable = {
     "Speed": Speed,
     "Area": Area}
 
+
+ConversionTable = {
+    "Feet_Meters" : 3.28084
+}
+
+
+
+class Units(object):
+    def __init__(self, dimension, short_name, long_name, in_terms_of=None):
+        self.dimension, self.short_name = dimension, short_name
+        self.long_name = long_name
+
+        if in_terms_of:
+            self.setup_conversion(*in_terms_of)
+
+class Unit(object):
+    def __init__(self, quantity):
+        self.dimension(quantity,self.__class__)
+    conversion = False
+
+class Meter(Unit):
+    dimension = Length
+
+class Second(Unit):
+    dimension = Time
+
+class Minute(Unit):
+    dimension = Time
+    conversion = [[Second, 60]]
+
+UnitDimensionTable = {
+    "Length" : [Meter],
+    "Time" : [Second, Minute]
+}
+
+
+def traverse_no_cycle(starting_unit, found_units=None):
+    if not found_units:
+        found_units = []
+    found_units.append(starting_unit)
+    if not starting_unit.conversion:
+        return found_units
+
+    for unit, conv_factor in starting_unit.conversion:
+        if unit in found_units:
+            continue
+        found_units.extend(traverse_no_cycle(unit, found_units))
+    return found_units
+
+class UnreachableUnit(Exception):
+    pass
+
+class NoConversionPossible(Exception):
+    pass
+
+def directly_reachable(from_unit, to_unit):
+    for unit_, conv_factor in from_unit.conversion:
+        if to_unit == unit_:
+            return True
+    return False
+
+def make_bidirectional(starting_unit):
+    if not starting_unit.conversion:
+        return
+    for unit_, conv_factor in starting_unit.conversion:
+        if directly_reachable(unit_, starting_unit):
+            # if there is already a conversion factor, don't put
+            # another one in
+            continue
+        unit_.conversion.append(
+            [starting_unit, (1.0 / conv_factor)])
+
+def make_list_bidirectional(unit_list):
+    map(make_bidirectional, unit_list)
+
+def verify_same_type(unit_list):
+    if len(unit_list) < 2:
+        return True
+    base_unit = unit_list[0]
+    base_dim = base_unit.dimension
+    for unit_ in unit_list:
+        if not unit_.dimension == base_dim:
+            raise NoConversionPossible(
+                "Cannot convert from %r of %r to %r of %r " %\
+                    (base_unit, base_dim, unit_, unit_.dimension))
+    return True
+
+def verify_reachability(unit_list):
+    found_units = []
+    if len(unit_list) < 2:
+        #all elements are reachable when there are 0 or 1 elements
+        return True
+    starting_unit = False
+
+    for unit_ in unit_list:
+        if not unit_.conversion:
+            continue
+        else:
+            # pick the first unit with a conversion fractor
+            starting_unit = unit_
+            break
+    if not starting_unit:
+        #if there are multiple units and not of them had a conversion
+        #factor, there is no way to traverse all of them
+        raise UnreachableUnit(
+            "none of the units have conversion, each is their own island" +\
+                unit_list)
+    all_tree_memebers = traverse_no_cycle(starting_unit)
+    unreachable_units = []
+    for unit_ in unit_list:
+        if unit_ not in all_tree_memebers:
+            unreachable_units.append(unit_)
+    if unreachable_units:
+        raise UnreachableUnit(
+            "all of %r are unreachable starting from %r" %\
+                (unreachable_units, starting_unit))
+    return True
+
+def verify_unit_dimension_table(udt):
+    for type_name, unit_list in udt.items():
+        make_list_bidirectional(unit_list)
+        verify_reachability(unit_list)
+        verify_same_type(unit_list)
+
+def find_path(start, end, working_path=False, tried=False):
+    if not working_path:
+        working_path = []
+    if not tried:
+        tried = []
+    working_path.append(start)
+    tried.append(start)
+    if start == end:
+        return working_path
+    for unit_, conv_factor in start.conversion:
+        if unit_ not in tried:
+            possible_path = find_path(unit_, end, working_path, tried)
+            if possible_path:
+                return possible_path
+    return False
+
+
+
+class Quark(Unit):
+    dimension = Length
+    conversion = []
+
+class QuarkW(Unit):
+    dimension = Length
+    conversion = [[Quark, 30]]
+
+class TestUnits(unittest.TestCase):
+    def test_traverse_no_cycle(self):
+        class Quark(Unit):
+            dimension = Length
+            conversion = []
+        class QuarkW(Unit):
+            dimension = Length
+            conversion = [[Quark, 30]]
+
+    def test_make_bidirectional(self):
+        class Quark(Unit):
+            dimension = Length
+            conversion = []
+        class QuarkW(Unit):
+            dimension = Length
+            conversion = [[Quark, 30]]
+        self.assertEquals(len(Quark.conversion),0)
+        make_bidirectional(QuarkW)
+        self.assertEquals(len(Quark.conversion),1)
+
+    def test_reachability(self):
+        class Quark(Unit):
+            dimension = Length
+            conversion = []
+
+        class QuarkW(Unit):
+            dimension = Length
+            conversion = [[Quark, 30]]
+
+        class QuarkZ(Unit):
+            dimension = Length
+            conversion = [[QuarkW, 10]]
+
+        class Buzz(Unit):
+            dimension = Length
+            conversion = []
+
+        class BuzzB(Unit):
+            dimension = Length
+            conversion = [[Buzz, 25]]
+
+        class Bridge(Unit):
+            dimension = Length
+            conversion = [[Buzz,34], [Quark, 8]]
+        make_list_bidirectional(
+            [Quark, QuarkW, QuarkZ, Buzz, BuzzB, Bridge])
+        self.assertTrue(verify_reachability([]))
+        self.assertTrue(verify_reachability([Quark]))
+        self.assertTrue(verify_reachability([Quark, QuarkW]))
+        self.assertTrue(verify_reachability([Quark, QuarkW, Buzz, Bridge]))
+
+    def test_reachability2(self):
+        """ this needs to be run separetly because
+        make_list_bidirectional provides links that aren't necessarily
+        in unit_list"""
+        class Quark(Unit):
+            dimension = Length
+            conversion = []
+        class Buzz(Unit):
+            dimension = Length
+            conversion = []
+        class QuarkW(Unit):
+            dimension = Length
+            conversion = [[Quark, 30]]
+        class BuzzB(Unit):
+            dimension = Length
+            conversion = [[Buzz, 25]]
+        make_list_bidirectional([QuarkW, Quark, Buzz, BuzzB])
+        def unreachable1():
+            verify_reachability([Quark, Buzz])
+        def unreachable2():
+            verify_reachability([QuarkW, BuzzB, Buzz])
+
+        print "="*80
+        print find_path(Quark, Buzz)
+        print "="*80
+        self.assertRaises(UnreachableUnit, unreachable1)
+        self.assertRaises(UnreachableUnit, unreachable2)
+
+
+    def test_same_type(self):
+        class Quark(Unit):
+            dimension = Length
+        class QuarkW(Unit):
+            dimension = Length
+        class QuarkZ(Unit):
+            dimension = Time
+        self.assertTrue(verify_same_type([]))
+        self.assertTrue(verify_same_type([Quark]))
+        self.assertTrue(verify_same_type([Quark, QuarkW]))
+        def incompatible():
+            verify_same_type([Quark, QuarkZ])
+        self.assertRaises(NoConversionPossible, incompatible)
 
 
 
