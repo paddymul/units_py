@@ -309,6 +309,7 @@ class TestUnits(unittest.TestCase):
         self.assertUnitAlmostEqual(f,m)
         self.assertAlmostEqual(
             Feet(3), Yard(1))
+        self.assertAlmostEqual(Feet(3), Feet(1) * 3)
 
 
 
