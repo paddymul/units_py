@@ -90,9 +90,29 @@ class BaseDimension(object):
 
 class AlreadyDefinedException(Exception):
     pass
-DimensionRelationTable = {
-    "Length*Length":"Area",
-    "Length/Time": "Speed"}
+
+def _fill_relational_table(table):
+    new_relations = []
+    for expression, resultant_type in table.items():
+        mult_components = expression.split("*")
+        if len(mult_components) > 1:
+            left_type, right_type = mult_components
+            new_relations.append(
+                ["%s*%s" % (right_type, left_type), resultant_type])
+            new_relations.append(
+                ["%s/%s" % (resultant_type, left_type), right_type])
+            new_relations.append(
+                ["%s/%s" % (resultant_type, right_type), left_type])
+        div_components = expression.split("/")
+        if len(div_components) > 1:
+            left_type, right_type = div_components
+            new_relations.append(
+                ["%s*%s" % (resultant_type, right_type), left_type])
+    for expression, result_type in new_relations:
+
+        table[expression] = result_type
+    return table
+
 
 class UnitSystem(object):
 
@@ -116,33 +136,71 @@ class UnitSystem(object):
         dim = self.new_dimension(dimension_name)
         self.DimensionRelationTable[derived_def] = dimension_name
         self._fill_relational_table()
+        return dim
 
     def _fill_relational_table(self):
-        new_relations = []
-        table = self.DimensionRelationTable
-        for expression, resultant_type in table.items():
-           mult_components = expression.split("*")
-           if len(mult_components) > 1:
-               left_type, right_type = mult_components
-               new_relations.append(
-                   ["%s*%s" % (right_type, left_type), resultant_type])
-               new_relations.append(
-                   ["%s/%s" % (resultant_type, left_type), right_type])
-               new_relations.append(
-                   ["%s/%s" % (resultant_type, right_type), left_type])
-           div_components = expression.split("/")
-           if len(div_components) > 1:
-               left_type, right_type = div_components
-               new_relations.append(
-                   ["%s*%s" % (resultant_type, right_type), left_type])
-        for expression, result_type in new_relations:
-            table[expression] = result_type
-        self.DimensionRelationTable = table
+        drt = self.DimensionRelationTable
+        self.DimensionRelationTable = _fill_relational_table(drt)
+
+
+class TestDimensions(unittest.TestCase):
+
+    def test_fill(self):
+        mult_table = {"Length*Length":"Area"}
+        n_table = _fill_relational_table(mult_table)
+        self.assertEquals(
+            len(n_table.keys()), 2)
+        self.assertTrue(
+            "Area/Length" in n_table.keys())
+        self.assertEquals(n_table['Area/Length'], 'Length')
+
+        div_table = {"Length/Time":"Speed"}
+        nd_table = _fill_relational_table(div_table)
+        self.assertEquals(
+            len(nd_table.keys()), 2)
+        self.assertTrue(
+            "Speed*Time" in nd_table.keys())
+        self.assertEquals(nd_table['Speed*Time'], 'Length')
+
+
+    def test_instatiation(self):
+        class LLength(BaseDimension):
+            pass
+        print LLength(10)
+    def test_equality(self):
+        class LLength(BaseDimension):
+            pass
+        self.assertEquals(
+            LLength(10), LLength(10))
+    def test_like_addition(self):
+        us = UnitSystem()
+        LLength = us.new_dimension("LLength")
+        expected20 = LLength(10) + LLength(10)
+        self.assertEquals(expected20, LLength(20))
+    def test_unlike_addition(self):
+        us = UnitSystem()
+        LLength = us.new_dimension("LLength")
+        LTime = us.new_dimension("LTime")
+        def unlike():
+            no_answer = LLength(10) + LTime(20)
+        self.assertRaises(InvalidType, unlike)
+
+    def test_multiply(self):
+        us = UnitSystem()
+        LLength = us.new_dimension("LLength")
+        LArea = us.add_derived_dimension(LLength * LLength, "LArea")
+        self.assertEquals(
+            LLength(10) * LLength(10), LArea(100))
+
+if __name__ == "__main__":
+    unittest.main()
+
+'''
 us = UnitSystem()
 Length = us.new_dimension("Length")
 Area = us.add_derived_dimension(Length * Length, "Area")
 
-'''
+
 class Length(Dimension):
     pass
 
@@ -471,44 +529,4 @@ class TestUnits(unittest.TestCase):
         self.assertRaises(NoConversionPossible, incompatible)
 
 
-
-class TestDimensions(unittest.TestCase):
-
-    def test_fill(self):
-        mult_table = {"Length*Length":"Area"}
-        n_table = fill_relational_table(mult_table)
-        self.assertEquals(
-            len(n_table.keys()), 2)
-        self.assertTrue(
-            "Area/Length" in n_table.keys())
-        self.assertEquals(n_table['Area/Length'], 'Length')
-
-        div_table = {"Length/Time":"Speed"}
-        nd_table = fill_relational_table(div_table)
-        self.assertEquals(
-            len(nd_table.keys()), 2)
-        self.assertTrue(
-            "Speed*Time" in nd_table.keys())
-        self.assertEquals(nd_table['Speed*Time'], 'Length')
-
-
-    def test_instatiation(self):
-        print Length(10)
-    def test_equality(self):
-        self.assertEquals(
-            Length(10), Length(10))
-    def test_like_addition(self):
-        expected20 = Length(10) + Length(10)
-        self.assertEquals(expected20, Length(20))
-    def test_unlike_addition(self):
-        def unlike():
-            no_answer = Length(10) + Time(20)
-        self.assertRaises(InvalidType, unlike)
-
-    def test_multiply(self):
-        self.assertEquals(
-            Length(10) * Length(10), Area(100))
-
-if __name__ == "__main__":
-    unittest.main()
 '''
