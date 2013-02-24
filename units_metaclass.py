@@ -6,7 +6,16 @@ class InvalidType(Exception):
 class InvalidExpressionException(Exception):
     pass
 
-class ExprMetaclass(type):
+
+class BaseDimension(object):
+    """ this class needs to be overridden with the unit_system
+    attribute set """
+    def __init__(self, dimension_name, unit_system):
+        self.__name__ = dimension_name
+        self.unit_system = unit_system
+
+    def __repr__(self):
+        return self.__name__
 
     def __mul__(self, other):
         sc, oc = self.__class__, other.__class__
@@ -23,70 +32,6 @@ class ExprMetaclass(type):
         return "%s/%s" % (self.__name__, other.__name__)
 
 
-class BaseDimension(object):
-    """ this class needs to be overridden with the unit_system
-    attribute set """
-    __metaclass__ = ExprMetaclass
-    def __init__(self, quantity, unit_class=None):
-        self.quantity = quantity
-        self.unit_class = unit_class
-
-    def __mul__(self, multiplicant):
-        mp_cl = multiplicant.__class__
-        sl_cl = self.__class__
-        if mp_cl in [float, int]:
-            return sl_cl(self.quantity * multiplicant)
-
-        type_def = "%s*%s" % (mp_cl.__name__, sl_cl.__name__)
-        if self.unit_system.DimensionRelationTable.has_key(type_def):
-            t_ = self.unit_system.DimensionRelationTable[type_def]
-            r_type = self.unit_system.TypeTable[t_]
-            return r_type(self.quantity * multiplicant.quantity)
-        else:
-            raise InvalidType(
-                "No way to multiply %s and %s" % (sl_cl, mp_cl))
-
-    def __div__(self, denominator):
-        dn_cl = dividen.__class__
-        sl_cl = self.__class__
-        if dn_cl in [float, int]:
-            return sl_cl(self.quantity / denominator)
-        type_def = "%s/%s" % (sl_cl.__name__, dn_cl.__name__)
-        if self.unit_system.DimensionRelationTable.has_key(type_def):
-            t_ = self.unit_system.DimensionRelationTable[type_def]
-            r_type = self.unit_system.TypeTable[t_]
-            return r_type(self.quantity / denominator.quantity)
-        else:
-           raise InvalidType(
-                "No way to divide %s by %s" % (sl_cl, dn_cl))
-
-    def __add__(self, addend):
-        ad_cl = addend.__class__
-        sl_cl = self.__class__
-        if ad_cl == sl_cl:
-            return sl_cl(self.quantity + addend.quantity)
-        else:
-            raise InvalidType(
-                "No way to add %s to %s" % (sl_cl, ad_cl))
-
-    def __sub__(self, subtend):
-        sb_cl = subtend.__class__
-        sl_cl = self.__class__
-        if sb_cl == sl_cl:
-            return sl_cl(self.quantity - subtend.quantity)
-        else:
-            raise InvalidType(
-                "No way to subtract %s from %s" % (sb_cl, sl_cl))
-
-    def __eq__(self, other_side):
-        if not other_side.__class__ == self.__class__:
-            return False
-        if other_side.quantity == self.quantity:
-            return True
-        return False
-
-    def __repr__(self):
-        return "%s %d" % (self.__class__, self.quantity)
 
 class AlreadyDefinedException(Exception):
     pass
@@ -219,12 +164,85 @@ class NoConversionPossible(Exception):
     pass
 
 
-class Unit(object):
+class BaseUnit(object):
     def __init__(self, quantity):
-        self.quantity = quantity
-        return self.dimension(quantity, self.__class__)
+        self.nominal_quantity = quantity
+        self.real_quantity = quantity * self.conversion_factor
 
+    conversion_factor = 1
     conversion = False
+
+    def __div__(self, other):
+        ot_cl = other.__class__
+        sl_cl = self.__class__
+        if ot_cl in [float, int]:
+            return sl_cl(self.nominal_quantity / other)
+
+        sl_dm = sl_cl.dimension
+        ot_dm = ot_cl.dimension
+        type_def = "%s/%s" % (ot_dm.__name__, sl_dm.__name__)
+        if sl_dm.unit_system.DimensionRelationTable.has_key(type_def):
+            new_dimension = sl_dm.unit_system.DimensionRelationTable[type_def]
+            new_bu = new_dimension.base_unit
+            return new_bu(self.real_quantity / ot.real_quantity)
+        else:
+            raise InvalidType(
+                "No way to multiply %s and %s" % (sl_cl, ot_cl))
+    def __mul__(self, other):
+        ot_cl = other.__class__
+        sl_cl = self.__class__
+        if ot_cl in [float, int]:
+            return sl_cl(self.nominal_quantity * other)
+
+        sl_dm = sl_cl.dimension
+        ot_dm = ot_cl.dimension
+        type_def = "%s*%s" % (ot_dm.__name__, sl_dm.__name__)
+        if sl_dm.unit_system.DimensionRelationTable.has_key(type_def):
+            new_dimension = sl_dm.unit_system.DimensionRelationTable[type_def]
+            new_bu = new_dimension.base_unit
+            return new_bu(self.real_quantity * other.real_quantity)
+        else:
+            raise InvalidType(
+                "No way to multiply %s and %s" % (sl_cl, ot_cl))
+
+    def __add__(self, other):
+        ot_cl = other.__class__
+        sl_cl = self.__class__
+
+        sl_dm = sl_cl.dimension
+        ot_dm = ot_cl.dimension
+
+        if sl_dm == ot_dm:
+            return sl_dm.base_unit(self.real_quantity + other.real_quantity)
+        else:
+            raise InvalidType(
+                "No way to add %s to %s" % (sl_cl, ot_cl))
+
+    def __sub__(self, other):
+        ot_cl = other.__class__
+        sl_cl = self.__class__
+
+        sl_dm = sl_cl.dimension
+        ot_dm = ot_cl.dimension
+
+        if sl_dm == ot_dm:
+            return sl_dm.base_unit(self.real_quantity - other.real_quantity)
+        else:
+            raise InvalidType(
+                "No way to subtract %s from %s" % (ot_cl, sl_cl))
+
+    def __eq__(self, other):
+        ot_cl = other.__class__
+        sl_cl = self.__class__
+
+        sl_dm = sl_cl.dimension
+        ot_dm = ot_cl.dimension
+
+        if sl_dm == ot_dm:
+            return self.real_quantity == other.real_quantity
+        else:
+            raise InvalidType(
+                "No way to compare %s to %s" % (ot_cl, sl_cl))
 
     def convert_to(self, other_unit):
         correct_conv = False
@@ -248,60 +266,59 @@ class UnitSystem(object):
 
     def __init__(self):
         self.DimensionRelationTable = {}
-        self.TypeTable = {}
         self.UnitDimensionTable = {}
 
-    def new_dimension(self, dimension_name, base_unit):
-        if self.TypeTable.has_key(dimension_name):
+    def new_dimension(self, dimension_name, base_unit_name):
+        if self.DimensionRelationTable.has_key(dimension_name):
             raise AlreadyDefinedException("%s already defined" % dimension_name)
-        class TempDimension(BaseDimension):
-            unit_system = self
-        TempDimension.unit_system = self
-        TempDimension.__name__ = dimension_name
-        self.TypeTable[dimension_name] = TempDimension
-        class TempUnit(Unit):
-            dimension = TempDimension
+        temp_dim = BaseDimension(dimension_name, self)
+        self.DimensionRelationTable[dimension_name] = temp_dim
+        class TempUnit(BaseUnit):
+            dimension = temp_dim
             conversion = []
-        TempUnit.__name__ = base_unit
+        TempUnit.__name__ = base_unit_name
+        temp_dim.base_unit = TempUnit
         self.UnitDimensionTable[dimension_name] = [TempUnit]
 
-        return TempDimension
+        return TempUnit
 
-    def add_derived_dimension(self, derived_def, dimension_name):
+    def add_derived_dimension(self, derived_def,
+                              dimension_name, derived_unit_name):
         if self.DimensionRelationTable.has_key(derived_def):
             raise AlreadyDefinedException("%s already defined" % derived_def)
-        dim = self.new_dimension(dimension_name)
-        self.DimensionRelationTable[derived_def] = dimension_name
+        derived_unit_kls = self.new_dimension(dimension_name, derived_unit_name)
+        self.DimensionRelationTable[derived_def] = derived_unit_kls.dimension
         self._fill_relational_table()
-        return dim
+        return derived_unit_kls
 
     def _fill_relational_table(self):
         drt = self.DimensionRelationTable
         self.DimensionRelationTable = _fill_relational_table(drt)
-UnitDimensionTable = {
-    "Length" : [Meter],
-    "Time" : [Second, Minute]}
+
+# UnitDimensionTable = {
+#     "Length" : [Meter],
+#     "Time" : [Second, Minute]}
 
 
 us = UnitSystem()
-Length = us.new_dimension("Length", "Meter")
-Time = us.new_dimension("Time", "Second")
-Second = Time.base_unit
-Minute = Time.add_unit(60 * Second, "Minute")
-Area = us.add_derived_dimension(Length * Length, "Area")
+Meter = us.new_dimension("Length", "Meter")
+Second= us.new_dimension("Time", "Second")
+#Minute = Second.dimension.add_unit(60 * Second, "Minute")
+Length = Meter.dimension
+#Area = us.add_derived_dimension(Length * Length, "Area", "Meter^2")
 
 
-Meter = Length.unit("M", "Meter")
+# Meter = Length.unit("M", "Meter")
 
-class Meter(Unit):
-    dimension = Length
+# class Meter(Unit):
+#     dimension = Length
 
-class Second(Unit):
-    dimension = Time
+# class Second(Unit):
+#     dimension = Time
 
-class Minute(Unit):
-    dimension = Time
-    conversion = [[Second, 60]]
+# class Minute(Unit):
+#     dimension = Time
+#     conversion = [[Second, 60]]
 
 
 
@@ -327,32 +344,36 @@ class TestDimensions(unittest.TestCase):
 
     def test_instatiation(self):
         class LLength(BaseDimension):
-            pass
-        print LLength(10)
+            us = UnitSystem()
+            Meter = us.new_dimension("Length", "Meter",)
+            Meter(10)
+
+
     def test_equality(self):
-        class LLength(BaseDimension):
-            pass
+        us = UnitSystem()
+        Meter = us.new_dimension("Length", "Meter",)
         self.assertEquals(
-            LLength(10), LLength(10))
+            Meter(10), Meter(10))
     def test_like_addition(self):
         us = UnitSystem()
-        LLength = us.new_dimension("LLength")
+        LLength = us.new_dimension("LLength", "Meter")
         expected20 = LLength(10) + LLength(10)
         self.assertEquals(expected20, LLength(20))
     def test_unlike_addition(self):
         us = UnitSystem()
-        LLength = us.new_dimension("LLength")
-        LTime = us.new_dimension("LTime")
+        LLength = us.new_dimension("LLength", "Meter")
+        LTime = us.new_dimension("LTime", "Second")
         def unlike():
             no_answer = LLength(10) + LTime(20)
         self.assertRaises(InvalidType, unlike)
 
     def test_multiply(self):
         us = UnitSystem()
-        LLength = us.new_dimension("LLength")
-        LArea = us.add_derived_dimension(LLength * LLength, "LArea")
+        Meter = us.new_dimension("Length", "Meter",)
+        Length = Meter.dimension
+        Msq = us.add_derived_dimension(Length * Length, "Area", "Meter^2")
         self.assertEquals(
-            LLength(10) * LLength(10), LArea(100))
+            Meter(10) * Meter(10), Msq(100))
 
 if __name__ == "__main__":
     unittest.main()
