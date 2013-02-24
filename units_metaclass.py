@@ -113,14 +113,145 @@ def _fill_relational_table(table):
         table[expression] = result_type
     return table
 
+def traverse_no_cycle(starting_unit, found_units=None):
+    if not found_units:
+        found_units = []
+    found_units.append(starting_unit)
+    if not starting_unit.conversion:
+        return found_units
 
+    for unit, conv_factor in starting_unit.conversion:
+        if unit in found_units:
+            continue
+        found_units.extend(traverse_no_cycle(unit, found_units))
+    return found_units
+
+
+def directly_reachable(from_unit, to_unit):
+    for unit_, conv_factor in from_unit.conversion:
+        if to_unit == unit_:
+            return True
+    return False
+
+def make_bidirectional(starting_unit):
+    if not starting_unit.conversion:
+        return
+    for unit_, conv_factor in starting_unit.conversion:
+        if directly_reachable(unit_, starting_unit):
+            # if there is already a conversion factor, don't put
+            # another one in
+            continue
+        unit_.conversion.append(
+            [starting_unit, (1.0 / conv_factor)])
+
+def make_list_bidirectional(unit_list):
+    map(make_bidirectional, unit_list)
+
+def verify_same_type(unit_list):
+    if len(unit_list) < 2:
+        return True
+    base_unit = unit_list[0]
+    base_dim = base_unit.dimension
+    for unit_ in unit_list:
+        if not unit_.dimension == base_dim:
+            raise NoConversionPossible(
+                "Cannot convert from %r of %r to %r of %r " %\
+                    (base_unit, base_dim, unit_, unit_.dimension))
+    return True
+
+def verify_reachability(unit_list):
+    found_units = []
+    if len(unit_list) < 2:
+        #all elements are reachable when there are 0 or 1 elements
+        return True
+    starting_unit = False
+
+    for unit_ in unit_list:
+        if not unit_.conversion:
+            continue
+        else:
+            # pick the first unit with a conversion fractor
+            starting_unit = unit_
+            break
+    if not starting_unit:
+        #if there are multiple units and not of them had a conversion
+        #factor, there is no way to traverse all of them
+        raise UnreachableUnit(
+            "none of the units have conversion, each is their own island" +\
+                unit_list)
+    all_tree_memebers = traverse_no_cycle(starting_unit)
+    unreachable_units = []
+    for unit_ in unit_list:
+        if unit_ not in all_tree_memebers:
+            unreachable_units.append(unit_)
+    if unreachable_units:
+        raise UnreachableUnit(
+            "all of %r are unreachable starting from %r" %\
+                (unreachable_units, starting_unit))
+    return True
+
+def verify_unit_dimension_table(udt):
+    for type_name, unit_list in udt.items():
+        make_list_bidirectional(unit_list)
+        verify_reachability(unit_list)
+        verify_same_type(unit_list)
+
+def find_path(start, end, working_path=False, tried=False):
+    if not working_path:
+        working_path = []
+    if not tried:
+        tried = []
+    working_path.append(start)
+    tried.append(start)
+    if start == end:
+        return working_path
+    for unit_, conv_factor in start.conversion:
+        if unit_ not in tried:
+            possible_path = find_path(unit_, end, working_path, tried)
+            if possible_path:
+                return possible_path
+    return False
+
+class UnreachableUnit(Exception):
+    pass
+
+class NoConversionPossible(Exception):
+    pass
+
+
+class Unit(object):
+    def __init__(self, quantity):
+        self.quantity = quantity
+        return self.dimension(quantity, self.__class__)
+
+    conversion = False
+
+    def convert_to(self, other_unit):
+        correct_conv = False
+        for unit_, conv_factor in self.conversion:
+            if unit_ == other_unit:
+                correct_conv = conv_factor
+        if not correct_conv:
+            raise NoConversionPossible(
+                "no conversion from %r to %r" % (self.__class__, other_unit))
+        else:
+            return self.dimension(self.quantity * conv_factor, other_unit)
+
+
+"""
+Key insight, you don't add instatiated dimensions, you add units.  Put
+another way, you don't add Length and Length, you add 3 feet and 3
+feet, or 3 feet and 1 meter
+
+"""
 class UnitSystem(object):
 
     def __init__(self):
         self.DimensionRelationTable = {}
         self.TypeTable = {}
+        self.UnitDimensionTable = {}
 
-    def new_dimension(self, dimension_name):
+    def new_dimension(self, dimension_name, base_unit):
         if self.TypeTable.has_key(dimension_name):
             raise AlreadyDefinedException("%s already defined" % dimension_name)
         class TempDimension(BaseDimension):
@@ -128,6 +259,12 @@ class UnitSystem(object):
         TempDimension.unit_system = self
         TempDimension.__name__ = dimension_name
         self.TypeTable[dimension_name] = TempDimension
+        class TempUnit(Unit):
+            dimension = TempDimension
+            conversion = []
+        TempUnit.__name__ = base_unit
+        self.UnitDimensionTable[dimension_name] = [TempUnit]
+
         return TempDimension
 
     def add_derived_dimension(self, derived_def, dimension_name):
@@ -141,6 +278,31 @@ class UnitSystem(object):
     def _fill_relational_table(self):
         drt = self.DimensionRelationTable
         self.DimensionRelationTable = _fill_relational_table(drt)
+UnitDimensionTable = {
+    "Length" : [Meter],
+    "Time" : [Second, Minute]}
+
+
+us = UnitSystem()
+Length = us.new_dimension("Length", "Meter")
+Time = us.new_dimension("Time", "Second")
+Second = Time.base_unit
+Minute = Time.add_unit(60 * Second, "Minute")
+Area = us.add_derived_dimension(Length * Length, "Area")
+
+
+Meter = Length.unit("M", "Meter")
+
+class Meter(Unit):
+    dimension = Length
+
+class Second(Unit):
+    dimension = Time
+
+class Minute(Unit):
+    dimension = Time
+    conversion = [[Second, 60]]
+
 
 
 class TestDimensions(unittest.TestCase):
@@ -240,153 +402,6 @@ class Units(object):
 
 
 
-
-class UnreachableUnit(Exception):
-    pass
-
-class NoConversionPossible(Exception):
-    pass
-
-
-class Unit(object):
-    def __init__(self, quantity):
-        self.quantity = quantity
-        self.dimension(quantity, self.__class__)
-    conversion = False
-
-    def convert_to(self, other_unit):
-        correct_conv = False
-        for unit_, conv_factor in self.conversion:
-            if unit_ == other_unit:
-                correct_conv = conv_factor
-        if not correct_conv:
-            raise NoConversionPossible(
-                "no conversion from %r to %r" % (self.__class__, other_unit))
-        else:
-            return self.dimension(self.quantity * conv_factor, other_unit)
-
-
-SI = make_unit_system()
-Length = SI.Dimension("Length")
-Area = SI.DerivedDimension(Length * Length)
-
-
-Meter = Length.unit("M", "Meter")
-
-
-class Meter(Unit):
-    dimension = Length
-
-class Second(Unit):
-    dimension = Time
-
-class Minute(Unit):
-    dimension = Time
-    conversion = [[Second, 60]]
-
-UnitDimensionTable = {
-    "Length" : [Meter],
-    "Time" : [Second, Minute]}
-
-
-def traverse_no_cycle(starting_unit, found_units=None):
-    if not found_units:
-        found_units = []
-    found_units.append(starting_unit)
-    if not starting_unit.conversion:
-        return found_units
-
-    for unit, conv_factor in starting_unit.conversion:
-        if unit in found_units:
-            continue
-        found_units.extend(traverse_no_cycle(unit, found_units))
-    return found_units
-
-
-def directly_reachable(from_unit, to_unit):
-    for unit_, conv_factor in from_unit.conversion:
-        if to_unit == unit_:
-            return True
-    return False
-
-def make_bidirectional(starting_unit):
-    if not starting_unit.conversion:
-        return
-    for unit_, conv_factor in starting_unit.conversion:
-        if directly_reachable(unit_, starting_unit):
-            # if there is already a conversion factor, don't put
-            # another one in
-            continue
-        unit_.conversion.append(
-            [starting_unit, (1.0 / conv_factor)])
-
-def make_list_bidirectional(unit_list):
-    map(make_bidirectional, unit_list)
-
-def verify_same_type(unit_list):
-    if len(unit_list) < 2:
-        return True
-    base_unit = unit_list[0]
-    base_dim = base_unit.dimension
-    for unit_ in unit_list:
-        if not unit_.dimension == base_dim:
-            raise NoConversionPossible(
-                "Cannot convert from %r of %r to %r of %r " %\
-                    (base_unit, base_dim, unit_, unit_.dimension))
-    return True
-
-def verify_reachability(unit_list):
-    found_units = []
-    if len(unit_list) < 2:
-        #all elements are reachable when there are 0 or 1 elements
-        return True
-    starting_unit = False
-
-    for unit_ in unit_list:
-        if not unit_.conversion:
-            continue
-        else:
-            # pick the first unit with a conversion fractor
-            starting_unit = unit_
-            break
-    if not starting_unit:
-        #if there are multiple units and not of them had a conversion
-        #factor, there is no way to traverse all of them
-        raise UnreachableUnit(
-            "none of the units have conversion, each is their own island" +\
-                unit_list)
-    all_tree_memebers = traverse_no_cycle(starting_unit)
-    unreachable_units = []
-    for unit_ in unit_list:
-        if unit_ not in all_tree_memebers:
-            unreachable_units.append(unit_)
-    if unreachable_units:
-        raise UnreachableUnit(
-            "all of %r are unreachable starting from %r" %\
-                (unreachable_units, starting_unit))
-    return True
-
-def verify_unit_dimension_table(udt):
-    for type_name, unit_list in udt.items():
-        make_list_bidirectional(unit_list)
-        verify_reachability(unit_list)
-        verify_same_type(unit_list)
-
-def find_path(start, end, working_path=False, tried=False):
-    if not working_path:
-        working_path = []
-    if not tried:
-        tried = []
-    working_path.append(start)
-    tried.append(start)
-    if start == end:
-        return working_path
-    for unit_, conv_factor in start.conversion:
-        if unit_ not in tried:
-            possible_path = find_path(unit_, end, working_path, tried)
-            if possible_path:
-                return possible_path
-    return False
 
 
 
