@@ -6,6 +6,36 @@ class InvalidType(Exception):
 class InvalidExpressionException(Exception):
     pass
 
+class UnitExpression(object):
+    def __init__(self, conversion_factor, dimension):
+        self.conversion_factor = conversion_factor
+        self.dimension = dimension
+
+class ExprMetaclass(type):
+
+    def __mul__(self, other):
+        ot_cl = other.__class__
+        sl_cl = self
+
+        if ot_cl in [float, int]:
+            return UnitExpression(
+                sl_cl.conversion_factor * other,
+                sl_cl.dimension)
+        else:
+            raise InvalidExpressionException(
+                "currently only multiplication by primitives is supported")
+    def __div__(self, other):
+        ot_cl = other.__class__
+        sl_cl = self
+
+        if ot_cl in [float, int]:
+            return UnitExpression(
+                sl_cl.conversion_factor / other,
+                sl_cl.dimension)
+        else:
+            raise InvalidExpressionException(
+                "currently only division by primitives is supported")
+
 
 class BaseDimension(object):
     """ this class needs to be overridden with the unit_system
@@ -18,17 +48,9 @@ class BaseDimension(object):
         return self.__name__
 
     def __mul__(self, other):
-        sc, oc = self.__class__, other.__class__
-        if not oc == sc:
-            InvalidExpressionException(
-                "No way to multiply classes of type %r and %r" % (sc, oc))
         return "%s*%s" % (self.__name__, other.__name__)
 
     def _div__(self, other):
-        sc, oc = self.__class__, other.__class__
-        if not oc == sc:
-            InvalidExpressionException(
-                "No way to divided classes of type %r and %r" % (sc, oc))
         return "%s/%s" % (self.__name__, other.__name__)
 
 
@@ -58,105 +80,6 @@ def _fill_relational_table(table):
         table[expression] = result_type
     return table
 
-def traverse_no_cycle(starting_unit, found_units=None):
-    if not found_units:
-        found_units = []
-    found_units.append(starting_unit)
-    if not starting_unit.conversion:
-        return found_units
-
-    for unit, conv_factor in starting_unit.conversion:
-        if unit in found_units:
-            continue
-        found_units.extend(traverse_no_cycle(unit, found_units))
-    return found_units
-
-
-def directly_reachable(from_unit, to_unit):
-    for unit_, conv_factor in from_unit.conversion:
-        if to_unit == unit_:
-            return True
-    return False
-
-def make_bidirectional(starting_unit):
-    if not starting_unit.conversion:
-        return
-    for unit_, conv_factor in starting_unit.conversion:
-        if directly_reachable(unit_, starting_unit):
-            # if there is already a conversion factor, don't put
-            # another one in
-            continue
-        unit_.conversion.append(
-            [starting_unit, (1.0 / conv_factor)])
-
-def make_list_bidirectional(unit_list):
-    map(make_bidirectional, unit_list)
-
-def verify_same_type(unit_list):
-    if len(unit_list) < 2:
-        return True
-    base_unit = unit_list[0]
-    base_dim = base_unit.dimension
-    for unit_ in unit_list:
-        if not unit_.dimension == base_dim:
-            raise NoConversionPossible(
-                "Cannot convert from %r of %r to %r of %r " %\
-                    (base_unit, base_dim, unit_, unit_.dimension))
-    return True
-
-def verify_reachability(unit_list):
-    found_units = []
-    if len(unit_list) < 2:
-        #all elements are reachable when there are 0 or 1 elements
-        return True
-    starting_unit = False
-
-    for unit_ in unit_list:
-        if not unit_.conversion:
-            continue
-        else:
-            # pick the first unit with a conversion fractor
-            starting_unit = unit_
-            break
-    if not starting_unit:
-        #if there are multiple units and not of them had a conversion
-        #factor, there is no way to traverse all of them
-        raise UnreachableUnit(
-            "none of the units have conversion, each is their own island" +\
-                unit_list)
-    all_tree_memebers = traverse_no_cycle(starting_unit)
-    unreachable_units = []
-    for unit_ in unit_list:
-        if unit_ not in all_tree_memebers:
-            unreachable_units.append(unit_)
-    if unreachable_units:
-        raise UnreachableUnit(
-            "all of %r are unreachable starting from %r" %\
-                (unreachable_units, starting_unit))
-    return True
-
-def verify_unit_dimension_table(udt):
-    for type_name, unit_list in udt.items():
-        make_list_bidirectional(unit_list)
-        verify_reachability(unit_list)
-        verify_same_type(unit_list)
-
-def find_path(start, end, working_path=False, tried=False):
-    if not working_path:
-        working_path = []
-    if not tried:
-        tried = []
-    working_path.append(start)
-    tried.append(start)
-    if start == end:
-        return working_path
-    for unit_, conv_factor in start.conversion:
-        if unit_ not in tried:
-            possible_path = find_path(unit_, end, working_path, tried)
-            if possible_path:
-                return possible_path
-    return False
-
 class UnreachableUnit(Exception):
     pass
 
@@ -169,8 +92,10 @@ class BaseUnit(object):
         self.nominal_quantity = quantity
         self.real_quantity = quantity * self.conversion_factor
 
-    conversion_factor = 1
+    conversion_factor = 1.0
     conversion = False
+
+    __metaclass__ = ExprMetaclass
 
     def __div__(self, other):
         ot_cl = other.__class__
@@ -244,6 +169,15 @@ class BaseUnit(object):
             raise InvalidType(
                 "No way to compare %s to %s" % (ot_cl, sl_cl))
 
+    def __abs__(self):
+        sl_cl = self.__class__
+        return sl_cl(abs(self.nominal_quantity*1.0))
+
+    def __round__(self):
+        sl_cl = self.__class__
+        return sl_cl(round(self.nominal_quantity*1.0))
+
+
     def convert_to(self, other_unit):
         correct_conv = False
         for unit_, conv_factor in self.conversion:
@@ -280,7 +214,6 @@ class UnitSystem(object):
         self.DimensionRelationTable[dimension_name] = temp_dim
         class TempUnit(BaseUnit):
             dimension = temp_dim
-            conversion = []
         TempUnit.__name__ = base_unit_name
         temp_dim.base_unit = TempUnit
         self.Dimensions[dimension_name] = temp_dim
@@ -303,9 +236,11 @@ class UnitSystem(object):
 
     def add_unit(self, new_unit_name, unit_expression):
         class TempUnit(BaseUnit):
-            dimension = temp_dim
-            conversion = []
-        TempUnit.__name__ = base_unit_name
+            dimension = unit_expression.dimension
+            conversion_factor = unit_expression.conversion_factor
+        TempUnit.__name__ = new_unit_name
+        self.Units[new_unit_name] = TempUnit
+        return TempUnit
 
 
 # UnitDimensionTable = {
@@ -321,14 +256,60 @@ Length = Meter.dimension
 Area = us.add_derived_dimension(Length * Length, "Area", "Meter^2")
 
 class TestUnits(unittest.TestCase):
+
+    def assertUnitAlmostEqual(self, first, second,
+                          places=None, msg=None, delta=None):
+        """Fail if the two objects are unequal as determined by their
+           difference rounded to the given number of decimal places
+           (default 7) and comparing to zero, or by comparing that the
+           between the two objects is more than the given delta.
+
+           Note that decimal places (from zero) are usually not the same
+           as significant digits (measured from the most signficant digit).
+
+           If the two objects compare equal then they will automatically
+           compare almost equal.
+        """
+        if first == second:
+            # shortcut
+            return
+        if delta is not None and places is not None:
+            raise TypeError("specify delta or places not both")
+
+        if delta is not None:
+            if abs(first - second) <= delta:
+                return
+
+            standardMsg = '%s != %s within %s delta' % (safe_repr(first),
+                                                        safe_repr(second),
+                                                        safe_repr(delta))
+        else:
+            if places is None:
+                places = 7
+
+            abs_ = abs(second.real_quantity - first.real_quantity)
+            if round(abs_, places) == 0:
+                return
+
+            standardMsg = '%s != %s within %r places' % (safe_repr(first),
+                                                          safe_repr(second),
+                                                          places)
+        msg = self._formatMessage(msg, standardMsg)
+        raise self.failureException(msg)
+
+
     def test_conversion(self):
         us = UnitSystem()
         Meter = us.new_dimension("Length", "Meter",)
-        Feet = us.Units.Meter.add_unit("Feet", 3.208)
-        Length = Meter.imension
-        Msq = us.add_derived_dimension(Length * Length, "Area", "Meter^2")
-        self.assertEquals(
-            Meter(10) * Meter(10), Msq(100))
+        Feet = us.add_unit("Feet", Meter / 3.208)
+        Yard = us.add_unit("Yard", Feet * 3)
+        f, m = Feet(3.208), Meter(1)
+        print f.real_quantity, m.real_quantity
+        self.assertAlmostEqual(f.real_quantity,m.real_quantity)
+        self.assertUnitAlmostEqual(f,m)
+        self.assertAlmostEqual(
+            Feet(3), Yard(1))
+
 
 
 
