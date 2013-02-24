@@ -127,10 +127,30 @@ class Units(object):
         if in_terms_of:
             self.setup_conversion(*in_terms_of)
 
+class UnreachableUnit(Exception):
+    pass
+
+class NoConversionPossible(Exception):
+    pass
+
+
 class Unit(object):
     def __init__(self, quantity):
-        self.dimension(quantity,self.__class__)
+        self.quantity = quantity
+        self.dimension(quantity, self.__class__)
     conversion = False
+
+    def convert_to(self, other_unit):
+        correct_conv = False
+        for unit_, conv_factor in self.conversion:
+            if unit_ == other_unit:
+                correct_conv = conv_factor
+        if not correct_conv:
+            raise NoConversionPossible(
+                "no conversion from %r to %r" % (self.__class__, other_unit))
+        else:
+            return self.dimension(self.quantity * conv_factor, other_unit)
+
 
 class Meter(Unit):
     dimension = Length
@@ -161,11 +181,6 @@ def traverse_no_cycle(starting_unit, found_units=None):
         found_units.extend(traverse_no_cycle(unit, found_units))
     return found_units
 
-class UnreachableUnit(Exception):
-    pass
-
-class NoConversionPossible(Exception):
-    pass
 
 def directly_reachable(from_unit, to_unit):
     for unit_, conv_factor in from_unit.conversion:
@@ -253,16 +268,23 @@ def find_path(start, end, working_path=False, tried=False):
     return False
 
 
-
-class Quark(Unit):
-    dimension = Length
-    conversion = []
-
-class QuarkW(Unit):
-    dimension = Length
-    conversion = [[Quark, 30]]
-
 class TestUnits(unittest.TestCase):
+    def test_conversion(self):
+
+        class Feet(Unit):
+            dimension = Length
+            conversion = []
+        class Meter(Unit):
+             dimension = Length
+             conversion = [[Feet, 3.2084]]
+
+
+        self.assertEquals(
+            Meter(1).convert_to(Feet), Length(3.2084))
+        make_bidirectional(Meter)
+
+        self.assertEquals(
+            Feet(3.2084).convert_to(Meter), Length(1))
     def test_traverse_no_cycle(self):
         class Quark(Unit):
             dimension = Length
