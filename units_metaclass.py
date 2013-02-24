@@ -56,7 +56,7 @@ class BaseDimension(object):
 
     def _div__(self, other):
         return "%s/%s" % (self.__name__, other.__name__)
-
+    Units = []
 
 
 class AlreadyDefinedException(Exception):
@@ -92,9 +92,12 @@ class NoConversionPossible(Exception):
 
 
 class BaseUnit(object):
-    def __init__(self, quantity):
+    def __init__(self, quantity, base_quantity=False):
         self.nominal_quantity = quantity
         self.real_quantity = quantity * self.conversion_factor
+        if base_quantity:
+            self.real_quantity = base_quantity
+            self.nominal_quantity = base_quantity / self.conversion_factor
 
     conversion_factor = 1.0
     conversion = False
@@ -135,6 +138,7 @@ class BaseUnit(object):
                 "No way to multiply %s and %s" % (sl_cl, ot_cl))
     __rdiv__ = __div__
     __rmul__ = __mul__
+
     def __add__(self, other):
         ot_cl = other.__class__
         sl_cl = self.__class__
@@ -183,12 +187,15 @@ class BaseUnit(object):
         return sl_cl(round(self.nominal_quantity*1.0))
 
 
-    def convert_to(self, other_unit):
-        if not correct_conv:
+    def convert_to(self, other_unit_kls):
+        ot_cl = other_unit_kls
+        sl_cl = self.__class__
+
+        if not ot_cl in self.dimension.Units:
             raise NoConversionPossible(
-                "no conversion from %r to %r" % (self.__class__, other_unit))
+                "no conversion from %r to %r" % (sl_cl, ot_cl))
         else:
-            return self.dimension(self.quantity * conv_factor, other_unit)
+            return ot_cl(0, self.real_quantity)
 
     def __str__(self):
         return "%r %s" % (self.nominal_quantity, self.__name__)
@@ -219,6 +226,7 @@ class UnitSystem(object):
             dimension = temp_dim
             __name__ = base_unit_name
         temp_dim.base_unit = TempUnit
+        temp_dim.Units.append(TempUnit)
         self.Dimensions[dimension_name] = temp_dim
         self.Units[base_unit_name] = TempUnit
         self.UnitDimensionTable[dimension_name] = [TempUnit]
@@ -242,7 +250,9 @@ class UnitSystem(object):
             dimension = unit_expression.dimension
             conversion_factor = unit_expression.conversion_factor
             __name__ = new_unit_name
+        TempUnit.dimension.Units.append(TempUnit)
         self.Units[new_unit_name] = TempUnit
+
         return TempUnit
 
 
@@ -280,6 +290,22 @@ class TestUnits(unittest.TestCase):
         self.assertAlmostEqual(Feet(3), 3 * Feet(1))
         self.assertAlmostEqual(Feet(1),  Feet(3) / 3)
         self.assertAlmostEqual(Feet(1),  Feet(3) / 3)
+
+    def test_convert_to(self):
+        us = UnitSystem()
+        Meter = us.new_dimension("Length", "Meter",)
+        Feet = us.add_unit("Feet", Meter / 3.208)
+        Yard = us.add_unit("Yard", Feet * 3)
+
+        self.assertUnitAlmostEqual(Feet(1), Feet(1).convert_to(Meter))
+
+        self.assertAlmostEqual(Feet(3), Yard(1))
+        self.assertAlmostEqual(Feet(3), Feet(1) * 3)
+        self.assertAlmostEqual(Feet(3), 3 * Feet(1))
+        self.assertAlmostEqual(Feet(1),  Feet(3) / 3)
+        self.assertAlmostEqual(Feet(1),  Feet(3) / 3)
+
+
 
     def assertUnitAlmostEqual(self, first, second,
                           places=None, msg=None, delta=None):
