@@ -24,6 +24,10 @@ class ExprMetaclass(type):
         else:
             raise InvalidExpressionException(
                 "currently only multiplication by primitives is supported")
+
+    __rmul__ = __mul__
+
+
     def __div__(self, other):
         ot_cl = other.__class__
         sl_cl = self
@@ -129,7 +133,8 @@ class BaseUnit(object):
         else:
             raise InvalidType(
                 "No way to multiply %s and %s" % (sl_cl, ot_cl))
-
+    __rdiv__ = __div__
+    __rmul__ = __mul__
     def __add__(self, other):
         ot_cl = other.__class__
         sl_cl = self.__class__
@@ -179,16 +184,14 @@ class BaseUnit(object):
 
 
     def convert_to(self, other_unit):
-        correct_conv = False
-        for unit_, conv_factor in self.conversion:
-            if unit_ == other_unit:
-                correct_conv = conv_factor
         if not correct_conv:
             raise NoConversionPossible(
                 "no conversion from %r to %r" % (self.__class__, other_unit))
         else:
             return self.dimension(self.quantity * conv_factor, other_unit)
 
+    def __str__(self):
+        return "%r %s" % (self.nominal_quantity, self.__name__)
 
 class AttributeDict(dict):
     __getattr__ = dict.__getitem__
@@ -214,7 +217,7 @@ class UnitSystem(object):
         self.DimensionRelationTable[dimension_name] = temp_dim
         class TempUnit(BaseUnit):
             dimension = temp_dim
-        TempUnit.__name__ = base_unit_name
+            __name__ = base_unit_name
         temp_dim.base_unit = TempUnit
         self.Dimensions[dimension_name] = temp_dim
         self.Units[base_unit_name] = TempUnit
@@ -238,7 +241,7 @@ class UnitSystem(object):
         class TempUnit(BaseUnit):
             dimension = unit_expression.dimension
             conversion_factor = unit_expression.conversion_factor
-        TempUnit.__name__ = new_unit_name
+            __name__ = new_unit_name
         self.Units[new_unit_name] = TempUnit
         return TempUnit
 
@@ -253,9 +256,30 @@ Meter = us.new_dimension("Length", "Meter")
 Second= us.new_dimension("Time", "Second")
 #Minute = Second.dimension.add_unit(60 * Second, "Minute")
 Length = Meter.dimension
-Area = us.add_derived_dimension(Length * Length, "Area", "Meter^2")
+Meter_2 = us.add_derived_dimension(Length * Length, "Area", "Meter^2")
+
+print Meter(1)
+print Meter_2(1)
 
 class TestUnits(unittest.TestCase):
+
+
+
+    def test_conversion(self):
+        us = UnitSystem()
+        Meter = us.new_dimension("Length", "Meter",)
+        Feet = us.add_unit("Feet", Meter / 3.208)
+        Yard = us.add_unit("Yard", Feet * 3)
+
+        f, m = Feet(3.208), Meter(1)
+        print f.real_quantity, m.real_quantity
+        self.assertAlmostEqual(f.real_quantity,m.real_quantity)
+        self.assertUnitAlmostEqual(f,m)
+        self.assertAlmostEqual(Feet(3), Yard(1))
+        self.assertAlmostEqual(Feet(3), Feet(1) * 3)
+        self.assertAlmostEqual(Feet(3), 3 * Feet(1))
+        self.assertAlmostEqual(Feet(1),  Feet(3) / 3)
+        self.assertAlmostEqual(Feet(1),  Feet(3) / 3)
 
     def assertUnitAlmostEqual(self, first, second,
                           places=None, msg=None, delta=None):
@@ -296,21 +320,6 @@ class TestUnits(unittest.TestCase):
                                                           places)
         msg = self._formatMessage(msg, standardMsg)
         raise self.failureException(msg)
-
-
-    def test_conversion(self):
-        us = UnitSystem()
-        Meter = us.new_dimension("Length", "Meter",)
-        Feet = us.add_unit("Feet", Meter / 3.208)
-        Yard = us.add_unit("Yard", Feet * 3)
-        f, m = Feet(3.208), Meter(1)
-        print f.real_quantity, m.real_quantity
-        self.assertAlmostEqual(f.real_quantity,m.real_quantity)
-        self.assertUnitAlmostEqual(f,m)
-        self.assertAlmostEqual(
-            Feet(3), Yard(1))
-        self.assertAlmostEqual(Feet(3), Feet(1) * 3)
-
 
 
 
