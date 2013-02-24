@@ -184,7 +184,7 @@ class BaseUnit(object):
         if sl_dm.unit_system.DimensionRelationTable.has_key(type_def):
             new_dimension = sl_dm.unit_system.DimensionRelationTable[type_def]
             new_bu = new_dimension.base_unit
-            return new_bu(self.real_quantity / ot.real_quantity)
+            return new_bu(self.rel_quantity / ot.real_quantity)
         else:
             raise InvalidType(
                 "No way to multiply %s and %s" % (sl_cl, ot_cl))
@@ -256,6 +256,9 @@ class BaseUnit(object):
             return self.dimension(self.quantity * conv_factor, other_unit)
 
 
+class AttributeDict(dict):
+    __getattr__ = dict.__getitem__
+    __setattr__ = dict.__setitem__
 """
 Key insight, you don't add instatiated dimensions, you add units.  Put
 another way, you don't add Length and Length, you add 3 feet and 3
@@ -267,6 +270,8 @@ class UnitSystem(object):
     def __init__(self):
         self.DimensionRelationTable = {}
         self.UnitDimensionTable = {}
+        self.Dimensions = AttributeDict()
+        self.Units = AttributeDict()
 
     def new_dimension(self, dimension_name, base_unit_name):
         if self.DimensionRelationTable.has_key(dimension_name):
@@ -278,8 +283,9 @@ class UnitSystem(object):
             conversion = []
         TempUnit.__name__ = base_unit_name
         temp_dim.base_unit = TempUnit
+        self.Dimensions[dimension_name] = temp_dim
+        self.Units[base_unit_name] = TempUnit
         self.UnitDimensionTable[dimension_name] = [TempUnit]
-
         return TempUnit
 
     def add_derived_dimension(self, derived_def,
@@ -295,6 +301,13 @@ class UnitSystem(object):
         drt = self.DimensionRelationTable
         self.DimensionRelationTable = _fill_relational_table(drt)
 
+    def add_unit(self, new_unit_name, unit_expression):
+        class TempUnit(BaseUnit):
+            dimension = temp_dim
+            conversion = []
+        TempUnit.__name__ = base_unit_name
+
+
 # UnitDimensionTable = {
 #     "Length" : [Meter],
 #     "Time" : [Second, Minute]}
@@ -305,7 +318,18 @@ Meter = us.new_dimension("Length", "Meter")
 Second= us.new_dimension("Time", "Second")
 #Minute = Second.dimension.add_unit(60 * Second, "Minute")
 Length = Meter.dimension
-#Area = us.add_derived_dimension(Length * Length, "Area", "Meter^2")
+Area = us.add_derived_dimension(Length * Length, "Area", "Meter^2")
+
+class TestUnits(unittest.TestCase):
+    def test_conversion(self):
+        us = UnitSystem()
+        Meter = us.new_dimension("Length", "Meter",)
+        Feet = us.Units.Meter.add_unit("Feet", 3.208)
+        Length = Meter.imension
+        Msq = us.add_derived_dimension(Length * Length, "Area", "Meter^2")
+        self.assertEquals(
+            Meter(10) * Meter(10), Msq(100))
+
 
 
 # Meter = Length.unit("M", "Meter")
@@ -454,115 +478,6 @@ class MyKlass(object):
     barattr = 2
 
 
-class TestUnits(unittest.TestCase):
-    def test_conversion(self):
-
-        class Feet(Unit):
-            dimension = Length
-            conversion = []
-        class Meter(Unit):
-             dimension = Length
-             conversion = [[Feet, 3.2084]]
-
-
-        self.assertEquals(
-            Meter(1).convert_to(Feet), Length(3.2084))
-        make_bidirectional(Meter)
-
-        self.assertEquals(
-            Feet(3.2084).convert_to(Meter), Length(1))
-    def test_traverse_no_cycle(self):
-        class Quark(Unit):
-            dimension = Length
-            conversion = []
-        class QuarkW(Unit):
-            dimension = Length
-            conversion = [[Quark, 30]]
-
-    def test_make_bidirectional(self):
-        class Quark(Unit):
-            dimension = Length
-            conversion = []
-        class QuarkW(Unit):
-            dimension = Length
-            conversion = [[Quark, 30]]
-        self.assertEquals(len(Quark.conversion),0)
-        make_bidirectional(QuarkW)
-        self.assertEquals(len(Quark.conversion),1)
-
-    def test_reachability(self):
-        class Quark(Unit):
-            dimension = Length
-            conversion = []
-
-        class QuarkW(Unit):
-            dimension = Length
-            conversion = [[Quark, 30]]
-
-        class QuarkZ(Unit):
-            dimension = Length
-            conversion = [[QuarkW, 10]]
-
-        class Buzz(Unit):
-            dimension = Length
-            conversion = []
-
-        class BuzzB(Unit):
-            dimension = Length
-            conversion = [[Buzz, 25]]
-
-        class Bridge(Unit):
-            dimension = Length
-            conversion = [[Buzz,34], [Quark, 8]]
-        make_list_bidirectional(
-            [Quark, QuarkW, QuarkZ, Buzz, BuzzB, Bridge])
-        self.assertTrue(verify_reachability([]))
-        self.assertTrue(verify_reachability([Quark]))
-        self.assertTrue(verify_reachability([Quark, QuarkW]))
-        self.assertTrue(verify_reachability([Quark, QuarkW, Buzz, Bridge]))
-
-    def test_reachability2(self):
-        """ this needs to be run separetly because
-        make_list_bidirectional provides links that aren't necessarily
-        in unit_list"""
-        class Quark(Unit):
-            dimension = Length
-            conversion = []
-        class Buzz(Unit):
-            dimension = Length
-            conversion = []
-        class QuarkW(Unit):
-            dimension = Length
-            conversion = [[Quark, 30]]
-        class BuzzB(Unit):
-            dimension = Length
-            conversion = [[Buzz, 25]]
-        make_list_bidirectional([QuarkW, Quark, Buzz, BuzzB])
-        def unreachable1():
-            verify_reachability([Quark, Buzz])
-        def unreachable2():
-            verify_reachability([QuarkW, BuzzB, Buzz])
-
-        print "="*80
-        print find_path(Quark, Buzz)
-        print "="*80
-        self.assertRaises(UnreachableUnit, unreachable1)
-        self.assertRaises(UnreachableUnit, unreachable2)
-
-
-    def test_same_type(self):
-        class Quark(Unit):
-            dimension = Length
-        class QuarkW(Unit):
-            dimension = Length
-        class QuarkZ(Unit):
-            dimension = Time
-        self.assertTrue(verify_same_type([]))
-        self.assertTrue(verify_same_type([Quark]))
-        self.assertTrue(verify_same_type([Quark, QuarkW]))
-        def incompatible():
-            verify_same_type([Quark, QuarkZ])
-        self.assertRaises(NoConversionPossible, incompatible)
 
 
 '''
