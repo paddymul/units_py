@@ -1,3 +1,4 @@
+import pdb
 import unittest
 
 class InvalidType(Exception):
@@ -78,8 +79,12 @@ def _fill_relational_table(table):
             left_type, right_type = div_components
             new_relations.append(
                 ["%s*%s" % (resultant_type, right_type), left_type])
-    for expression, result_type in new_relations:
-
+    for expression, result_type_name in new_relations:
+        #result_type = table[result_type_name]
+        if type(result_type_name) == type("a"):
+            result_type = table[result_type_name]
+        else:
+            result_type = result_type_name
         table[expression] = result_type
     return table
 
@@ -107,14 +112,17 @@ class BaseUnit(object):
 
         sl_dm = sl_cl.dimension
         ot_dm = ot_cl.dimension
-        type_def = "%s/%s" % (ot_dm.__name__, sl_dm.__name__)
+        type_def = "%s/%s" % (sl_dm.__name__, ot_dm.__name__)
         if sl_dm.unit_system.DimensionRelationTable.has_key(type_def):
             new_dimension = sl_dm.unit_system.DimensionRelationTable[type_def]
             new_bu = new_dimension.base_unit
-            return new_bu(self.rel_quantity / ot.real_quantity)
+
+
+            return new_bu(self.real_quantity / other.real_quantity)
         else:
             raise InvalidType(
-                "No way to multiply %s and %s" % (sl_cl, ot_cl))
+                "No way to divide %s and %s" % (sl_cl, ot_cl))
+
     def __mul__(self, other):
         ot_cl = other.__class__
         sl_cl = self.__class__
@@ -306,6 +314,10 @@ class TestUnits(unittest.TestCase):
 
         Length = us.Dimensions.Length
         Msq = us.add_derived_dimension(Length * Length, "Area", "Meter^2")
+
+        self.assertAlmostEqual(
+            Meter(10), (Msq(100) / Meter(10)))
+
         Area = us.Dimensions.Area
         Mcb = us.add_derived_dimension(Area * Length, "Volume", "Meter^3")
 
@@ -355,17 +367,18 @@ class TestUnits(unittest.TestCase):
 class TestDimensions(unittest.TestCase):
 
     def test_fill(self):
-        mult_table = {"Length*Length":"Area"}
+        mult_table = {"Length*Length":"Area", "Area":"Area", "Length":"Length"}
         n_table = _fill_relational_table(mult_table)
-        self.assertEquals(len(n_table.keys()), 2)
+        self.assertEquals(len(n_table.keys()), 4)
         self.assertTrue(
             "Area/Length" in n_table.keys())
         self.assertEquals(n_table['Area/Length'], 'Length')
 
-        div_table = {"Length/Time":"Speed"}
+        div_table = {"Length/Time":"Speed", "Length":"Length",
+                     "Time":"Time", "Speed":"Speed"}
         nd_table = _fill_relational_table(div_table)
         self.assertEquals(
-            len(nd_table.keys()), 2)
+            len(nd_table.keys()), 5)
         self.assertTrue(
             "Speed*Time" in nd_table.keys())
         self.assertEquals(nd_table['Speed*Time'], 'Length')
