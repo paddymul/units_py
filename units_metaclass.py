@@ -370,8 +370,7 @@ class TestDimensions(unittest.TestCase):
         mult_table = {"Length*Length":"Area", "Area":"Area", "Length":"Length"}
         n_table = _fill_relational_table(mult_table)
         self.assertEquals(len(n_table.keys()), 4)
-        self.assertTrue(
-            "Area/Length" in n_table.keys())
+        self.assertTrue("Area/Length" in n_table.keys())
         self.assertEquals(n_table['Area/Length'], 'Length')
 
         div_table = {"Length/Time":"Speed", "Length":"Length",

@@ -1,0 +1,48 @@
+
+* Units.py introduction
+
+This is a unit library  heavily inspired by units.clj
+jhttp://code.google.com/p/clj-units/ which was written in clojure.
+
+* examples
+
+#BEGIN_SRC
+us = UnitSystem()
+Meter = us.new_dimension("Length", "Meter",)
+Length = Meter.dimension
+Msq = us.add_derived_dimension(Length * Length, "Area", "Meter^2")
+
+Feet = us.add_unit("Feet", Meter / 3.208)
+Yard = us.add_unit("Yard", Feet * 3)
+
+Feet(1) ==  Feet(1).convert_to(Meter)
+
+Feet(3) == Yard(1)
+Feet(3) == (Feet(1) * 3)
+Feet(3) == (3 * Feet(1))
+Feet(1) == (Feet(3) / 3)
+Feet(1) == Feet(3) / 3)
+
+
+Msq = us.add_derived_dimension(Length * Length, "Area", "Meter^2")
+Area = us.Dimensions.Area
+Mcb = us.add_derived_dimension(Area * Length, "Volume", "Meter^3")
+
+Msq(100) == ( Mcb(1000)/(Meter(10)))
+
+#END_SRC
+
+
+* known bugs/limitations
+
+
+** complex expressions
+I don't know how to write the farenhight conversion becuase it
+requires a more complex conversion than just a scalar multiply.  
+
+I want something that looks like this
+Farenheight = us.add_unit("Farenheight", ((Celsius * 9/5.0) + 32))
+
+
+
+
