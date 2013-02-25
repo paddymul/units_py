@@ -27,7 +27,6 @@ class ExprMetaclass(type):
 
     __rmul__ = __mul__
 
-
     def __div__(self, other):
         ot_cl = other.__class__
         sl_cl = self
@@ -84,12 +83,8 @@ def _fill_relational_table(table):
         table[expression] = result_type
     return table
 
-class UnreachableUnit(Exception):
-    pass
-
 class NoConversionPossible(Exception):
     pass
-
 
 class BaseUnit(object):
     def __init__(self, quantity, base_quantity=False):
@@ -186,7 +181,6 @@ class BaseUnit(object):
         sl_cl = self.__class__
         return sl_cl(round(self.nominal_quantity*1.0))
 
-
     def convert_to(self, other_unit_kls):
         ot_cl = other_unit_kls
         sl_cl = self.__class__
@@ -270,14 +264,14 @@ Meter_2 = us.add_derived_dimension(Length * Length, "Area", "Meter^2")
 
 print Meter(1)
 print Meter_2(1)
-
+Feet = us.add_unit("Feet", Meter / 3.208)
+print Meter(1), Meter(1).convert_to(Feet)
 class TestUnits(unittest.TestCase):
-
 
 
     def test_conversion(self):
         us = UnitSystem()
-        Meter = us.new_dimension("Length", "Meter",)
+        Meter = us.new_dimension("Length", "Meter")
         Feet = us.add_unit("Feet", Meter / 3.208)
         Yard = us.add_unit("Yard", Feet * 3)
 
@@ -293,7 +287,7 @@ class TestUnits(unittest.TestCase):
 
     def test_convert_to(self):
         us = UnitSystem()
-        Meter = us.new_dimension("Length", "Meter",)
+        Meter = us.new_dimension("Length", "Meter")
         Feet = us.add_unit("Feet", Meter / 3.208)
         Yard = us.add_unit("Yard", Feet * 3)
 
@@ -305,7 +299,18 @@ class TestUnits(unittest.TestCase):
         self.assertAlmostEqual(Feet(1),  Feet(3) / 3)
         self.assertAlmostEqual(Feet(1),  Feet(3) / 3)
 
+    def test_derived_dimension_unit(self):
+        us = UnitSystem()
+        Meter = us.new_dimension("Length", "Meter")
+        Second = us.new_dimension("Time", "Second")
 
+        Length = us.Dimensions.Length
+        Msq = us.add_derived_dimension(Length * Length, "Area", "Meter^2")
+        Area = us.Dimensions.Area
+        Mcb = us.add_derived_dimension(Area * Length, "Volume", "Meter^3")
+
+        self.assertAlmostEqual(
+            Msq(100), Mcb(1000)/(Meter(10)))
 
     def assertUnitAlmostEqual(self, first, second,
                           places=None, msg=None, delta=None):
@@ -347,29 +352,12 @@ class TestUnits(unittest.TestCase):
         msg = self._formatMessage(msg, standardMsg)
         raise self.failureException(msg)
 
-
-
-# Meter = Length.unit("M", "Meter")
-
-# class Meter(Unit):
-#     dimension = Length
-
-# class Second(Unit):
-#     dimension = Time
-
-# class Minute(Unit):
-#     dimension = Time
-#     conversion = [[Second, 60]]
-
-
-
 class TestDimensions(unittest.TestCase):
 
     def test_fill(self):
         mult_table = {"Length*Length":"Area"}
         n_table = _fill_relational_table(mult_table)
-        self.assertEquals(
-            len(n_table.keys()), 2)
+        self.assertEquals(len(n_table.keys()), 2)
         self.assertTrue(
             "Area/Length" in n_table.keys())
         self.assertEquals(n_table['Area/Length'], 'Length')
@@ -388,7 +376,6 @@ class TestDimensions(unittest.TestCase):
             us = UnitSystem()
             Meter = us.new_dimension("Length", "Meter",)
             Meter(10)
-
 
     def test_equality(self):
         us = UnitSystem()
@@ -418,83 +405,3 @@ class TestDimensions(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-'''
-us = UnitSystem()
-Length = us.new_dimension("Length")
-Area = us.add_derived_dimension(Length * Length, "Area")
-
-
-class Length(Dimension):
-    pass
-
-class Area(Dimension):
-    pass
-
-class Time(Dimension):
-    pass
-
-class Speed(Dimension):
-    pass
-
-
-
-
-ConversionTable = {
-    "Feet_Meters" : 3.28084
-}
-
-
-
-class Units(object):
-    def __init__(self, dimension, short_name, long_name, in_terms_of=None):
-        self.dimension, self.short_name = dimension, short_name
-        self.long_name = long_name
-
-        if in_terms_of:
-            self.setup_conversion(*in_terms_of)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-class MyMeta(type):
-    def __new__(meta, name, bases, dct):
-        print '-----------------------------------'
-        print "Allocating memory for class", name
-        print meta
-        print bases
-        print dct
-        return super(MyMeta, meta).__new__(meta, name, bases, dct)
-    def __init__(cls, name, bases, dct):
-        print '-----------------------------------'
-        print "Initializing class", name
-        print cls
-        print bases
-        print dct
-        super(MyMeta, cls).__init__(name, bases, dct)
-
-
-class MyKlass(object):
-    __metaclass__ = MyMeta
-
-    def foo(self, param):
-        pass
-
-    barattr = 2
-
-
-
-
-'''
