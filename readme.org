@@ -6,7 +6,7 @@ jhttp://code.google.com/p/clj-units/ which was written in clojure.
 
 * examples
 
-#BEGIN_SRC
+#+BEGIN_SRC python
 us = UnitSystem()
 Meter = us.new_dimension("Length", "Meter",)
 Length = Meter.dimension
@@ -30,7 +30,7 @@ Mcb = us.add_derived_dimension(Area * Length, "Volume", "Meter^3")
 
 Msq(100) == ( Mcb(1000)/(Meter(10)))
 
-#END_SRC
+#+END_SRC
 
 
 * known bugs/limitations
