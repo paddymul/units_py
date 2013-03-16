@@ -1,10 +1,13 @@
-import pdb
-
-
 class InvalidType(Exception):
     pass
 
 class InvalidExpressionException(Exception):
+    pass
+
+class AlreadyDefinedException(Exception):
+    pass
+
+class NoConversionPossible(Exception):
     pass
 
 class UnitExpression(object):
@@ -12,12 +15,12 @@ class UnitExpression(object):
         self.conversion_factor = conversion_factor
         self.dimension = dimension
 
+
 class ExprMetaclass(type):
 
     def __mul__(self, other):
         ot_cl = other.__class__
         sl_cl = self
-
         if ot_cl in [float, int]:
             return UnitExpression(
                 sl_cl.conversion_factor * other,
@@ -27,7 +30,6 @@ class ExprMetaclass(type):
                 "currently only multiplication by primitives is supported")
 
     __rmul__ = __mul__
-
     def __div__(self, other):
         ot_cl = other.__class__
         sl_cl = self
@@ -58,10 +60,6 @@ class BaseDimension(object):
         return "%s/%s" % (self.__name__, other.__name__)
     Units = []
 
-
-class AlreadyDefinedException(Exception):
-    pass
-
 def _fill_relational_table(table):
     new_relations = []
     for expression, resultant_type in table.items():
@@ -80,16 +78,12 @@ def _fill_relational_table(table):
             new_relations.append(
                 ["%s*%s" % (resultant_type, right_type), left_type])
     for expression, result_type_name in new_relations:
-        #result_type = table[result_type_name]
         if type(result_type_name) == type("a"):
             result_type = table[result_type_name]
         else:
             result_type = result_type_name
         table[expression] = result_type
     return table
-
-class NoConversionPossible(Exception):
-    pass
 
 class BaseUnit(object):
     def __init__(self, quantity, base_quantity=False):
@@ -116,8 +110,6 @@ class BaseUnit(object):
         if sl_dm.unit_system.DimensionRelationTable.has_key(type_def):
             new_dimension = sl_dm.unit_system.DimensionRelationTable[type_def]
             new_bu = new_dimension.base_unit
-
-
             return new_bu(self.real_quantity / other.real_quantity)
         else:
             raise InvalidType(
@@ -156,11 +148,11 @@ class BaseUnit(object):
                 "No way to add %s to %s" % (sl_cl, ot_cl))
 
     def __sub__(self, other):
-        ot_cl = other.__class__
-        sl_cl = self.__class__
+        sl_cl = self.__class__ #self klass
+        ot_cl = other.__class__ #other klass
 
-        sl_dm = sl_cl.dimension
-        ot_dm = ot_cl.dimension
+        sl_dm = sl_cl.dimension #self dimension
+        ot_dm = ot_cl.dimension #other dimension
 
         if sl_dm == ot_dm:
             return sl_dm.base_unit(self.real_quantity - other.real_quantity)
@@ -169,11 +161,12 @@ class BaseUnit(object):
                 "No way to subtract %s from %s" % (ot_cl, sl_cl))
 
     def __eq__(self, other):
-        ot_cl = other.__class__
-        sl_cl = self.__class__
+        sl_cl = self.__class__ #self klass
+        ot_cl = other.__class__ #other klass
 
-        sl_dm = sl_cl.dimension
-        ot_dm = ot_cl.dimension
+
+        sl_dm = sl_cl.dimension #self dimension
+        ot_dm = ot_cl.dimension #other dimension
 
         if sl_dm == ot_dm:
             return self.real_quantity == other.real_quantity
@@ -205,12 +198,7 @@ class BaseUnit(object):
 class AttributeDict(dict):
     __getattr__ = dict.__getitem__
     __setattr__ = dict.__setitem__
-"""
-Key insight, you don't add instatiated dimensions, you add units.  Put
-another way, you don't add Length and Length, you add 3 feet and 3
-feet, or 3 feet and 1 meter
 
-"""
 class UnitSystem(object):
 
     def __init__(self):
@@ -254,10 +242,4 @@ class UnitSystem(object):
             __name__ = new_unit_name
         TempUnit.dimension.Units.append(TempUnit)
         self.Units[new_unit_name] = TempUnit
-
         return TempUnit
-
-
-# UnitDimensionTable = {
-#     "Length" : [Meter],
-#     "Time" : [Second, Minute]}
