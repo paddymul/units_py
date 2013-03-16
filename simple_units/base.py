@@ -56,7 +56,7 @@ class BaseDimension(object):
     def __mul__(self, other):
         return "%s*%s" % (self.__name__, other.__name__)
 
-    def _div__(self, other):
+    def __div__(self, other):
         return "%s/%s" % (self.__name__, other.__name__)
     Units = []
 
