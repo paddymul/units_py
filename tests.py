@@ -1,6 +1,6 @@
 import unittest
 from simple_units.base import (BaseDimension, _fill_relational_table,
-    UnitSystem, InvalidType, InvalidExpressionException)
+                               UnitSystem, InvalidType, InvalidExpressionException)
 
 us = UnitSystem()
 Meter = us.new_dimension("Length", "Meter")
